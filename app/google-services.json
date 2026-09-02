@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "178547183442",
+    "project_id": "absenceiq-5dc9c",
+    "storage_bucket": "absenceiq-5dc9c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:178547183442:android:3edc6a28caf8b237deb48b",
+        "android_client_info": {
+          "package_name": "com.example.absenceiq"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCBtcPbsbc9re84_x_9xGaSqZ95MX4UyYQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
