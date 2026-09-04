@@ -5,10 +5,10 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.*
+import com.example.absenceiq.screens.*
 import com.example.absenceiq.ui.theme.AbsenceIQTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.example.absenceiq.screens.*
 
 class MainActivity : ComponentActivity() {
 
@@ -42,16 +42,21 @@ class MainActivity : ComponentActivity() {
                                     password = password,
                                     onRoleFound = { role ->
 
-                                        currentScreen = when (role) {
+                                        currentScreen =
+                                            when (role) {
 
-                                            "student" -> "studentDashboard"
+                                                "student" ->
+                                                    "studentDashboard"
 
-                                            "faculty" -> "facultyDashboard"
+                                                "faculty" ->
+                                                    "facultyDashboard"
 
-                                            "admin" -> "adminDashboard"
+                                                "admin" ->
+                                                    "adminDashboard"
 
-                                            else -> "login"
-                                        }
+                                                else ->
+                                                    "login"
+                                            }
                                     }
                                 )
                             },
@@ -89,6 +94,7 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
+
                     "studentDashboard" -> {
 
                         StudentDashboardScreen(
@@ -101,13 +107,20 @@ class MainActivity : ComponentActivity() {
                                 currentScreen = "leaveHistory"
                             },
 
+                            onNotificationsClick = {
+                                currentScreen = "notifications"
+                            },
+
+                            onProfileClick = {
+                                currentScreen ="studentProfile"// Student profile later
+                            },
+
                             onLogout = {
                                 auth.signOut()
                                 currentScreen = "login"
                             }
                         )
                     }
-
 
                     "applyLeave" -> {
 
@@ -123,6 +136,23 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
+                    "notifications" -> {
+
+                        NotificationsScreen(
+
+                            onHomeClick = {
+                                currentScreen = "studentDashboard"
+                            },
+
+                            onHistoryClick = {
+                                currentScreen = "leaveHistory"
+                            },
+
+                            onProfileClick = {
+                                currentScreen = "studentProfile"
+                            }
+                        )
+                    }
 
                     "leaveHistory" -> {
 
@@ -138,9 +168,46 @@ class MainActivity : ComponentActivity() {
 
                         FacultyDashboardScreen(
 
+                            onRequestsClick = {
+                                currentScreen =
+                                    "facultyRequests"
+                            },
+
+                            onHistoryClick = {
+                                currentScreen =
+                                    "facultyHistory"
+                            },
+
+                            onProfileClick = {
+                                currentScreen =
+                                    "facultyProfile"
+                            },
+
                             onLogout = {
                                 auth.signOut()
-                                currentScreen = "login"
+                                currentScreen =
+                                    "login"
+                            }
+                        )
+
+                    }
+
+                    "facultyRequests" -> {
+
+                        FacultyRequestsScreen(
+
+                            onBack = {
+                                currentScreen = "facultyDashboard"
+                            }
+                        )
+                    }
+
+                    "facultyHistory" -> {
+
+                        FacultyHistoryScreen(
+
+                            onBack = {
+                                currentScreen = "facultyDashboard"
                             }
                         )
                     }
@@ -149,9 +216,91 @@ class MainActivity : ComponentActivity() {
 
                         AdminDashboardScreen(
 
+                            onRequestsClick = {
+                                currentScreen =
+                                    "adminRequests"
+                            },
+
+                            onHistoryClick = {
+                                currentScreen =
+                                    "adminHistory"
+                            },
+
+                            onProfileClick = {
+                                currentScreen = "adminProfile"
+                            },
+
                             onLogout = {
                                 auth.signOut()
-                                currentScreen = "login"
+                                currentScreen =
+                                    "login"
+                            }
+                        )
+                    }
+
+                    "adminRequests" -> {
+
+                        AdminRequestsScreen(
+
+                            onBack = {
+                                currentScreen = "adminDashboard"
+                            }
+                        )
+                    }
+
+                    "adminHistory" -> {
+
+                        AdminHistoryScreen(
+
+                            onBack = {
+                                currentScreen = "adminDashboard"
+                            }
+                        )
+                    }
+                    "studentProfile" -> {
+
+                        ProfileScreen(
+
+                            onBack = {
+                                currentScreen = "studentDashboard"
+                            },
+
+                            onLogout = {
+                                auth.signOut()
+                                currentScreen =
+                                    "login"
+                            }
+                        )
+                    }
+
+                    "facultyProfile" -> {
+
+                        ProfileScreen(
+
+                            onBack = {
+                                currentScreen = "facultyDashboard"
+                            },
+
+                            onLogout = {
+                                auth.signOut()
+                                currentScreen =
+                                    "login"
+                            }
+                        )
+                    }
+
+                    "adminProfile" -> {
+
+                        ProfileScreen(
+
+                            onBack = {
+                                currentScreen = "adminDashboard"
+                            },
+
+                            onLogout = {
+                                auth.signOut()
+                                currentScreen =
+                                    "login"
                             }
                         )
                     }
@@ -214,7 +363,8 @@ class MainActivity : ComponentActivity() {
                             return@addOnSuccessListener
                         }
 
-                        val role = document.getString("role")
+                        val role =
+                            document.getString("role")
 
                         if (role.isNullOrBlank()) {
 
@@ -229,7 +379,9 @@ class MainActivity : ComponentActivity() {
                             return@addOnSuccessListener
                         }
 
-                        onRoleFound(role.lowercase())
+                        onRoleFound(
+                            role.lowercase()
+                        )
                     }
                     .addOnFailureListener { error ->
 
@@ -242,11 +394,11 @@ class MainActivity : ComponentActivity() {
                         auth.signOut()
                     }
             }
-            .addOnFailureListener {
+            .addOnFailureListener { error ->
 
                 Toast.makeText(
                     this,
-                    "Invalid email or password",
+                    "Login failed: ${error.message}",
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -284,20 +436,29 @@ class MainActivity : ComponentActivity() {
         )
             .addOnSuccessListener {
 
-                val uid = auth.currentUser?.uid
+                val uid =
+                    auth.currentUser?.uid
 
                 if (uid == null) {
+
+                    Toast.makeText(
+                        this,
+                        "Unable to create user profile",
+                        Toast.LENGTH_LONG
+                    ).show()
+
                     return@addOnSuccessListener
                 }
 
-                val user = hashMapOf(
-                    "uid" to uid,
-                    "name" to name,
-                    "email" to email,
-                    "studentId" to studentId,
-                    "department" to department,
-                    "role" to role.lowercase()
-                )
+                val user =
+                    hashMapOf(
+                        "uid" to uid,
+                        "name" to name,
+                        "email" to email,
+                        "studentId" to studentId,
+                        "department" to department,
+                        "role" to role.lowercase()
+                    )
 
                 db.collection("users")
                     .document(uid)

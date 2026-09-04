@@ -34,6 +34,8 @@ data class StudentLeaveSummary(
 fun StudentDashboardScreen(
     onApplyLeave: () -> Unit,
     onHistoryClick: () -> Unit,
+    onNotificationsClick: () -> Unit,
+    onProfileClick: () -> Unit,
     onLogout: () -> Unit
 ) {
 
@@ -97,7 +99,7 @@ fun StudentDashboardScreen(
     }
 
     /*
-     * Listen to leave applications in real time.
+     * Listen to leave applications in real time
      */
     DisposableEffect(uid) {
 
@@ -213,10 +215,12 @@ fun StudentDashboardScreen(
 
             NavigationBar {
 
+                /*
+                 * HOME
+                 */
                 NavigationBarItem(
                     selected = true,
-                    onClick = onHistoryClick,
-
+                    onClick = { },
                     icon = {
                         Text("⌂")
                     },
@@ -225,6 +229,9 @@ fun StudentDashboardScreen(
                     }
                 )
 
+                /*
+                 * HISTORY
+                 */
                 NavigationBarItem(
                     selected = false,
                     onClick = onHistoryClick,
@@ -236,9 +243,12 @@ fun StudentDashboardScreen(
                     }
                 )
 
+                /*
+                 * NOTIFICATIONS
+                 */
                 NavigationBarItem(
                     selected = false,
-                    onClick = onHistoryClick,
+                    onClick = onNotificationsClick,
                     icon = {
                         Text("●")
                     },
@@ -247,11 +257,14 @@ fun StudentDashboardScreen(
                     }
                 )
 
+                /*
+                 * PROFILE
+                 */
                 NavigationBarItem(
                     selected = false,
-                    onClick = onHistoryClick,
+                    onClick = onProfileClick,
                     icon = {
-                        Text("●")
+                        Text("○")
                     },
                     label = {
                         Text("Profile")
@@ -519,13 +532,20 @@ fun StudentDashboardScreen(
                         fontWeight =
                             FontWeight.Bold
                     )
+
                     TextButton(
-                        onClick = onHistoryClick
+                        onClick =
+                            onHistoryClick
                     ) {
+
                         Text(
-                            text = "View All",
+                            text =
+                                "View All",
+
                             color = teal,
-                            fontWeight = FontWeight.Medium
+
+                            fontWeight =
+                                FontWeight.Medium
                         )
                     }
                 }

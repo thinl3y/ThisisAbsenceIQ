@@ -23,7 +23,7 @@ import com.google.firebase.firestore.ListenerRegistration
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-data class FacultyLeaveRequest(
+data class FacultyRequestItem(
     val id: String = "",
     val studentUid: String = "",
     val studentName: String = "",
@@ -36,16 +36,14 @@ data class FacultyLeaveRequest(
     val endDate: Timestamp? = null,
     val facultyStatus: String = "pending",
     val facultyRemarks: String = "",
+    val adminStatus: String = "waiting",
     val status: String = "pending",
     val createdAt: Timestamp? = null
 )
 
 @Composable
-fun FacultyDashboardScreen(
-    onRequestsClick: () -> Unit,
-    onHistoryClick: () -> Unit,
-    onProfileClick: () -> Unit,
-    onLogout: () -> Unit
+fun FacultyRequestsScreen(
+    onBack: () -> Unit
 ) {
 
     val context = LocalContext.current
@@ -54,16 +52,12 @@ fun FacultyDashboardScreen(
 
     val uid = auth.currentUser?.uid
 
-    var facultyName by remember {
-        mutableStateOf("Faculty / SSO")
-    }
-
     var department by remember {
         mutableStateOf("")
     }
 
     var requests by remember {
-        mutableStateOf<List<FacultyLeaveRequest>>(emptyList())
+        mutableStateOf<List<FacultyRequestItem>>(emptyList())
     }
 
     var selectedFilter by remember {
@@ -71,11 +65,7 @@ fun FacultyDashboardScreen(
     }
 
     var selectedRequest by remember {
-        mutableStateOf<FacultyLeaveRequest?>(null)
-    }
-
-    var showReviewDialog by remember {
-        mutableStateOf(false)
+        mutableStateOf<FacultyRequestItem?>(null)
     }
 
     var reviewAction by remember {
@@ -86,15 +76,19 @@ fun FacultyDashboardScreen(
         mutableStateOf("")
     }
 
+    var showReviewDialog by remember {
+        mutableStateOf(false)
+    }
+
     var isLoading by remember {
         mutableStateOf(true)
     }
 
     val teal = Color(0xFF0F7780)
-    val pageBackground = Color(0xFFF4F7FB)
+    val background = Color(0xFFF5F7FA)
 
     /*
-     * Load Faculty / SSO profile
+     * Load faculty department
      */
     LaunchedEffect(uid) {
 
@@ -105,19 +99,16 @@ fun FacultyDashboardScreen(
                 .get()
                 .addOnSuccessListener { document ->
 
-                    facultyName =
-                        document.getString("name")
-                            ?: "Faculty / SSO"
-
                     department =
-                        document.getString("department")
-                            ?: ""
+                        document.getString(
+                            "department"
+                        ) ?: ""
                 }
         }
     }
 
     /*
-     * Listen to requests in the same department
+     * Load all leave requests for this department
      */
     DisposableEffect(department) {
 
@@ -150,7 +141,7 @@ fun FacultyDashboardScreen(
                             snapshot?.documents
                                 ?.map { document ->
 
-                                    FacultyLeaveRequest(
+                                    FacultyRequestItem(
 
                                         id =
                                             document.id,
@@ -210,6 +201,11 @@ fun FacultyDashboardScreen(
                                                 "facultyRemarks"
                                             ) ?: "",
 
+                                        adminStatus =
+                                            document.getString(
+                                                "adminStatus"
+                                            ) ?: "waiting",
+
                                         status =
                                             document.getString(
                                                 "status"
@@ -235,30 +231,6 @@ fun FacultyDashboardScreen(
         }
     }
 
-    val pendingCount =
-        requests.count {
-            it.facultyStatus.equals(
-                "pending",
-                ignoreCase = true
-            )
-        }
-
-    val reviewedCount =
-        requests.count {
-            !it.facultyStatus.equals(
-                "pending",
-                ignoreCase = true
-            )
-        }
-
-    val onLeaveTodayCount =
-        requests.count {
-            it.status.equals(
-                "approved",
-                ignoreCase = true
-            )
-        }
-
     val filteredRequests =
         when (selectedFilter) {
 
@@ -278,7 +250,8 @@ fun FacultyDashboardScreen(
                     )
                 }
 
-            else -> requests
+            else ->
+                requests
         }
 
     /*
@@ -289,10 +262,13 @@ fun FacultyDashboardScreen(
         selectedRequest != null
     ) {
 
+        val request = selectedRequest!!
+
         AlertDialog(
 
             onDismissRequest = {
                 showReviewDialog = false
+                selectedRequest = null
                 remarks = ""
             },
 
@@ -308,32 +284,62 @@ fun FacultyDashboardScreen(
 
             text = {
 
-                Column {
+                Column(
+                    modifier =
+                        Modifier.verticalScroll(
+                            rememberScrollState()
+                        )
+                ) {
 
                     Text(
-                        selectedRequest!!.studentName,
+                        request.studentName,
+                        fontWeight =
+                            FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+
+                    Spacer(
+                        Modifier.height(4.dp)
+                    )
+
+                    Text(
+                        "${request.studentId} • ${request.department}"
+                    )
+
+                    Spacer(
+                        Modifier.height(16.dp)
+                    )
+
+                    Text(
+                        request.leaveType,
                         fontWeight =
                             FontWeight.Bold
                     )
 
                     Spacer(
-                        Modifier.height(6.dp)
+                        Modifier.height(8.dp)
                     )
 
                     Text(
-                        selectedRequest!!.leaveType
+                        "Duration: ${request.duration} day(s)"
                     )
 
                     Spacer(
-                        Modifier.height(14.dp)
+                        Modifier.height(12.dp)
                     )
 
                     Text(
-                        "Reason: ${selectedRequest!!.reason}"
+                        "Reason",
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+
+                    Text(
+                        request.reason
                     )
 
                     Spacer(
-                        Modifier.height(14.dp)
+                        Modifier.height(18.dp)
                     )
 
                     OutlinedTextField(
@@ -348,12 +354,8 @@ fun FacultyDashboardScreen(
                         },
 
                         placeholder = {
-
                             Text(
-                                if (
-                                    reviewAction ==
-                                    "reject"
-                                )
+                                if (reviewAction == "reject")
                                     "Reason for rejection"
                                 else
                                     "Optional remarks"
@@ -373,13 +375,8 @@ fun FacultyDashboardScreen(
                 Button(
                     onClick = {
 
-                        val request =
-                            selectedRequest
-                                ?: return@Button
-
                         if (
-                            reviewAction ==
-                            "reject" &&
+                            reviewAction == "reject" &&
                             remarks.isBlank()
                         ) {
 
@@ -393,13 +390,9 @@ fun FacultyDashboardScreen(
                         }
 
                         val updates =
-                            if (
-                                reviewAction ==
-                                "approve"
-                            ) {
+                            if (reviewAction == "approve") {
 
                                 hashMapOf<String, Any>(
-
                                     "facultyStatus"
                                             to "approved",
 
@@ -425,7 +418,6 @@ fun FacultyDashboardScreen(
                             } else {
 
                                 hashMapOf<String, Any>(
-
                                     "facultyStatus"
                                             to "rejected",
 
@@ -449,39 +441,26 @@ fun FacultyDashboardScreen(
                                 )
                             }
 
-                        db.collection(
-                            "leave_requests"
-                        )
-                            .document(
-                                request.id
-                            )
+                        db.collection("leave_requests")
+                            .document(request.id)
                             .update(updates)
 
                             .addOnSuccessListener {
 
                                 val notificationTitle =
-                                    if (
-                                        reviewAction ==
-                                        "approve"
-                                    )
+                                    if (reviewAction == "approve")
                                         "Application Under Review"
                                     else
                                         "Leave Rejected"
 
                                 val notificationMessage =
-                                    if (
-                                        reviewAction ==
-                                        "approve"
-                                    )
+                                    if (reviewAction == "approve")
                                         "Your ${request.leaveType} request has been reviewed by Faculty / SSO and forwarded to HOD / Admin."
                                     else
                                         "Your ${request.leaveType} request was rejected by Faculty / SSO. Tap to view remarks."
 
                                 val notificationType =
-                                    if (
-                                        reviewAction ==
-                                        "approve"
-                                    )
+                                    if (reviewAction == "approve")
                                         "review"
                                     else
                                         "rejected"
@@ -510,18 +489,13 @@ fun FacultyDashboardScreen(
                                                 to FieldValue.serverTimestamp()
                                     )
 
-                                db.collection(
-                                    "notifications"
-                                )
+                                db.collection("notifications")
                                     .add(notification)
 
                                 Toast.makeText(
                                     context,
 
-                                    if (
-                                        reviewAction ==
-                                        "approve"
-                                    )
+                                    if (reviewAction == "approve")
                                         "Request forwarded to HOD/Admin"
                                     else
                                         "Request rejected",
@@ -550,10 +524,7 @@ fun FacultyDashboardScreen(
                 ) {
 
                     Text(
-                        if (
-                            reviewAction ==
-                            "approve"
-                        )
+                        if (reviewAction == "approve")
                             "Approve"
                         else
                             "Reject"
@@ -565,11 +536,9 @@ fun FacultyDashboardScreen(
 
                 TextButton(
                     onClick = {
-                        showReviewDialog =
-                            false
+                        showReviewDialog = false
                     }
                 ) {
-
                     Text("Cancel")
                 }
             }
@@ -578,462 +547,250 @@ fun FacultyDashboardScreen(
 
     Scaffold(
 
-        bottomBar = {
+        topBar = {
 
-            NavigationBar {
+            Surface(
+                color = teal
+            ) {
 
-                NavigationBarItem(
-                    selected = true,
-                    onClick = { },
-                    icon = {
-                        Text("⌂")
-                    },
-                    label = {
-                        Text("Dashboard")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 16.dp,
+                            vertical = 18.dp
+                        ),
+
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+
+                    TextButton(
+                        onClick = onBack
+                    ) {
+                        Text(
+                            "← Back",
+                            color = Color.White
+                        )
                     }
-                )
 
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onRequestsClick,
-                    icon = {
-                        Text("≡")
-                    },
-                    label = {
-                        Text("Requests")
-                    }
-                )
+                    Spacer(
+                        Modifier.width(8.dp)
+                    )
 
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onHistoryClick,
-                    icon = {
-                        Text("●")
-                    },
-                    label = {
-                        Text("History")
-                    }
-                )
+                    Text(
+                        text =
+                            "Student Leave Requests",
 
-                NavigationBarItem(
-                    selected = false,
-                    onClick = onProfileClick,
-                    icon = {
-                        Text("○")
-                    },
-                    label = {
-                        Text("Profile")
-                    }
-                )
+                        color =
+                            Color.White,
+
+                        fontSize =
+                            22.sp,
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
             }
         }
 
-    ) { paddingValues ->
+    ) { padding ->
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
-                    pageBackground
+                    background
                 )
                 .verticalScroll(
                     rememberScrollState()
                 )
                 .padding(
-                    paddingValues
+                    padding
+                )
+                .padding(
+                    18.dp
                 )
         ) {
 
             /*
-             * HEADER
+             * Filters
              */
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(teal)
-                    .padding(
-                        horizontal = 24.dp,
-                        vertical = 28.dp
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        8.dp
                     )
             ) {
 
-                Text(
-                    text =
-                        "Faculty Dashboard",
+                listOf(
+                    "All",
+                    "Pending",
+                    "Reviewed"
+                ).forEach { item ->
 
-                    color =
-                        Color.White,
+                    FilterChip(
+                        selected =
+                            selectedFilter ==
+                                    item,
 
-                    fontSize =
-                        26.sp,
+                        onClick = {
+                            selectedFilter =
+                                item
+                        },
 
-                    fontWeight =
-                        FontWeight.Bold
-                )
-
-                Spacer(
-                    Modifier.height(5.dp)
-                )
-
-                Text(
-                    text =
-                        "Welcome, Faculty / SSO",
-
-                    color =
-                        Color.White.copy(
-                            alpha = 0.85f
-                        )
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp)
-            ) {
-
-                /*
-                 * SUMMARY CARDS
-                 */
-                Row(
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    horizontalArrangement =
-                        Arrangement.spacedBy(
-                            10.dp
-                        )
-                ) {
-
-                    FacultyStatCard(
-                        title =
-                            "Pending Review",
-                        count =
-                            pendingCount,
-                        countColor =
-                            Color(
-                                0xFFF39C12
-                            ),
-                        modifier =
-                            Modifier.weight(1f)
-                    )
-
-                    FacultyStatCard(
-                        title =
-                            "Reviewed",
-                        count =
-                            reviewedCount,
-                        countColor =
-                            Color(
-                                0xFF2E9E72
-                            ),
-                        modifier =
-                            Modifier.weight(1f)
-                    )
-
-                    FacultyStatCard(
-                        title =
-                            "On Leave Today",
-                        count =
-                            onLeaveTodayCount,
-                        countColor =
-                            Color(
-                                0xFF2D78B7
-                            ),
-                        modifier =
-                            Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(
-                    Modifier.height(
-                        26.dp
-                    )
-                )
-
-                Text(
-                    text =
-                        "Student Leave Requests",
-
-                    fontSize =
-                        21.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
-                )
-
-                Spacer(
-                    Modifier.height(
-                        12.dp
-                    )
-                )
-
-                /*
-                 * FILTER CHIPS
-                 */
-                Row(
-                    horizontalArrangement =
-                        Arrangement.spacedBy(
-                            8.dp
-                        )
-                ) {
-
-                    listOf(
-                        "All",
-                        "Pending",
-                        "Reviewed"
-                    ).forEach { item ->
-
-                        FilterChip(
-                            selected =
-                                selectedFilter ==
-                                        item,
-
-                            onClick = {
-                                selectedFilter =
-                                    item
-                            },
-
-                            label = {
-                                Text(item)
-                            }
-                        )
-                    }
-                }
-
-                Spacer(
-                    Modifier.height(
-                        18.dp
-                    )
-                )
-
-                if (isLoading) {
-
-                    Box(
-                        modifier =
-                            Modifier.fillMaxWidth()
-                                .padding(
-                                    40.dp
-                                ),
-
-                        contentAlignment =
-                            Alignment.Center
-                    ) {
-
-                        CircularProgressIndicator()
-                    }
-
-                } else if (
-                    filteredRequests
-                        .isEmpty()
-                ) {
-
-                    Card(
-                        modifier =
-                            Modifier.fillMaxWidth(),
-
-                        shape =
-                            RoundedCornerShape(
-                                16.dp
-                            ),
-
-                        colors =
-                            CardDefaults.cardColors(
-                                containerColor =
-                                    Color.White
-                            )
-                    ) {
-
-                        Column(
-                            modifier =
-                                Modifier.padding(
-                                    26.dp
-                                )
-                        ) {
-
-                            Text(
-                                "No leave requests found",
-
-                                fontWeight =
-                                    FontWeight.Bold
-                            )
-
-                            Spacer(
-                                Modifier.height(
-                                    6.dp
-                                )
-                            )
-
-                            Text(
-                                "New student requests will appear here automatically.",
-
-                                color =
-                                    Color.Gray
-                            )
+                        label = {
+                            Text(item)
                         }
-                    }
-
-                } else {
-
-                    filteredRequests
-                        .forEach { request ->
-
-                            FacultyRequestCard(
-                                request =
-                                    request,
-
-                                onReview = {
-
-                                    selectedRequest =
-                                        request
-
-                                    reviewAction =
-                                        "approve"
-
-                                    remarks = ""
-
-                                    showReviewDialog =
-                                        true
-                                },
-
-                                onReject = {
-
-                                    selectedRequest =
-                                        request
-
-                                    reviewAction =
-                                        "reject"
-
-                                    remarks = ""
-
-                                    showReviewDialog =
-                                        true
-                                }
-                            )
-
-                            Spacer(
-                                Modifier.height(
-                                    14.dp
-                                )
-                            )
-                        }
-                }
-
-                Spacer(
-                    Modifier.height(
-                        20.dp
                     )
-                )
-
-                OutlinedButton(
-                    onClick = onLogout,
-
-                    modifier =
-                        Modifier.fillMaxWidth()
-                ) {
-
-                    Text("Logout")
                 }
-
-                Spacer(
-                    Modifier.height(
-                        20.dp
-                    )
-                )
             }
-        }
-    }
-}
-
-@Composable
-fun FacultyStatCard(
-    title: String,
-    count: Int,
-    countColor: Color,
-    modifier: Modifier = Modifier
-) {
-
-    Card(
-        modifier = modifier,
-
-        shape =
-            RoundedCornerShape(
-                15.dp
-            ),
-
-        colors =
-            CardDefaults.cardColors(
-                containerColor =
-                    Color.White
-            )
-    ) {
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    vertical = 18.dp
-                ),
-
-            horizontalAlignment =
-                Alignment.CenterHorizontally
-        ) {
-
-            Text(
-                text =
-                    count.toString(),
-
-                fontSize =
-                    24.sp,
-
-                fontWeight =
-                    FontWeight.Bold,
-
-                color =
-                    countColor
-            )
 
             Spacer(
                 Modifier.height(
-                    5.dp
+                    20.dp
                 )
             )
 
-            Text(
-                text =
-                    title,
+            if (isLoading) {
 
-                color =
-                    Color.Gray,
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                40.dp
+                            ),
 
-                fontSize =
-                    12.sp
-            )
+                    contentAlignment =
+                        Alignment.Center
+                ) {
+
+                    CircularProgressIndicator()
+                }
+
+            } else if (
+                filteredRequests.isEmpty()
+            ) {
+
+                Card(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    shape =
+                        RoundedCornerShape(
+                            16.dp
+                        ),
+
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor =
+                                Color.White
+                        )
+                ) {
+
+                    Text(
+                        text =
+                            "No leave requests found.",
+
+                        modifier =
+                            Modifier.padding(
+                                24.dp
+                            ),
+
+                        color =
+                            Color.Gray
+                    )
+                }
+
+            } else {
+
+                filteredRequests
+                    .forEach { request ->
+
+                        FacultyRequestListCard(
+
+                            request =
+                                request,
+
+                            onApprove = {
+
+                                selectedRequest =
+                                    request
+
+                                reviewAction =
+                                    "approve"
+
+                                remarks = ""
+
+                                showReviewDialog =
+                                    true
+                            },
+
+                            onReject = {
+
+                                selectedRequest =
+                                    request
+
+                                reviewAction =
+                                    "reject"
+
+                                remarks = ""
+
+                                showReviewDialog =
+                                    true
+                            }
+                        )
+
+                        Spacer(
+                            Modifier.height(
+                                14.dp
+                            )
+                        )
+                    }
+            }
         }
     }
 }
 
+
 @Composable
-fun FacultyRequestCard(
-    request: FacultyLeaveRequest,
-    onReview: () -> Unit,
+fun FacultyRequestListCard(
+    request: FacultyRequestItem,
+    onApprove: () -> Unit,
     onReject: () -> Unit
 ) {
 
     val formatter =
         remember {
             SimpleDateFormat(
-                "dd MMM",
+                "dd MMM yyyy",
                 Locale.getDefault()
             )
         }
 
     val pending =
-        request.facultyStatus
-            .equals(
-                "pending",
-                ignoreCase = true
-            )
+        request.facultyStatus.equals(
+            "pending",
+            ignoreCase = true
+        )
+
+    val statusColor =
+        when {
+
+            pending ->
+                Color(0xFFE45817)
+
+            request.facultyStatus.equals(
+                "approved",
+                true
+            ) ->
+                Color(0xFF2E9E72)
+
+            else ->
+                Color(0xFFD74444)
+        }
 
     Card(
         modifier =
@@ -1066,105 +823,69 @@ fun FacultyRequestCard(
                     Arrangement.SpaceBetween
             ) {
 
-                Text(
-                    text =
-                        request.studentName,
-
-                    fontSize =
-                        17.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
-                )
-
-                Surface(
-                    shape =
-                        RoundedCornerShape(
-                            20.dp
-                        ),
-
-                    color =
-                        if (pending)
-                            Color(
-                                0xFFFFF1DB
-                            )
-                        else
-                            Color(
-                                0xFFE4F5EC
-                            )
-                ) {
+                Column {
 
                     Text(
-                        text =
-                            if (pending)
-                                "Pending Review"
-                            else
-                                "Reviewed",
-
-                        color =
-                            if (pending)
-                                Color(
-                                    0xFFE49317
-                                )
-                            else
-                                Color(
-                                    0xFF2E9E72
-                                ),
-
-                        modifier =
-                            Modifier.padding(
-                                horizontal =
-                                    12.dp,
-                                vertical =
-                                    6.dp
-                            ),
+                        request.studentName,
 
                         fontSize =
-                            12.sp,
+                            18.sp,
 
                         fontWeight =
                             FontWeight.Bold
                     )
+
+                    Spacer(
+                        Modifier.height(
+                            3.dp
+                        )
+                    )
+
+                    Text(
+                        "${request.studentId} • ${request.department}",
+
+                        color =
+                            Color.Gray,
+
+                        fontSize =
+                            13.sp
+                    )
                 }
+
+                Text(
+                    text =
+                        if (pending)
+                            "Pending Review"
+                        else
+                            request.facultyStatus
+                                .replaceFirstChar {
+                                    it.uppercase()
+                                },
+
+                    color =
+                        statusColor,
+
+                    fontWeight =
+                        FontWeight.Bold
+                )
             }
 
             Spacer(
                 Modifier.height(
-                    8.dp
-                )
-            )
-
-            Text(
-                text =
-                    "Student ID: ${request.studentId}",
-
-                color =
-                    Color.Gray,
-
-                fontSize =
-                    13.sp
-            )
-
-            Spacer(
-                Modifier.height(
-                    4.dp
-                )
-            )
-
-            Text(
-                text =
-                    request.department,
-
-                color =
-                    Color.Gray,
-
-                fontSize =
-                    13.sp
-            )
-
-            Spacer(
-                Modifier.height(
                     14.dp
+                )
+            )
+
+            Text(
+                request.leaveType,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+            Spacer(
+                Modifier.height(
+                    6.dp
                 )
             )
 
@@ -1185,18 +906,42 @@ fun FacultyRequestCard(
                     ?: "-"
 
             Text(
-                text =
-                    "${request.leaveType} • $start – $end",
-
-                fontWeight =
-                    FontWeight.Bold
+                "$start - $end • ${request.duration} day(s)"
             )
+
+            Spacer(
+                Modifier.height(
+                    10.dp
+                )
+            )
+
+            Text(
+                "Reason: ${request.reason}"
+            )
+
+            if (
+                request.facultyRemarks.isNotBlank()
+            ) {
+
+                Spacer(
+                    Modifier.height(
+                        8.dp
+                    )
+                )
+
+                Text(
+                    "Faculty Remarks: ${request.facultyRemarks}",
+
+                    color =
+                        Color.DarkGray
+                )
+            }
 
             if (pending) {
 
                 Spacer(
                     Modifier.height(
-                        16.dp
+                        18.dp
                     )
                 )
 
@@ -1205,26 +950,32 @@ fun FacultyRequestCard(
                         Modifier.fillMaxWidth(),
 
                     horizontalArrangement =
-                        Arrangement.End
+                        Arrangement.spacedBy(
+                            12.dp
+                        )
                 ) {
 
                     OutlinedButton(
                         onClick =
-                            onReject
+                            onReject,
+
+                        modifier =
+                            Modifier.weight(
+                                1f
+                            )
                     ) {
 
                         Text("Reject")
                     }
 
-                    Spacer(
-                        Modifier.width(
-                            10.dp
-                        )
-                    )
-
                     Button(
                         onClick =
-                            onReview,
+                            onApprove,
+
+                        modifier =
+                            Modifier.weight(
+                                1f
+                            ),
 
                         colors =
                             ButtonDefaults.buttonColors(
@@ -1235,7 +986,7 @@ fun FacultyRequestCard(
                             )
                     ) {
 
-                        Text("Review")
+                        Text("Approve")
                     }
                 }
             }

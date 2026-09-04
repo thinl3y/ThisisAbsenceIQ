@@ -1,6 +1,6 @@
 package com.example.absenceiq.screens
 
-import androidx.activity.compose.BackHandler
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -21,48 +22,51 @@ import com.google.firebase.firestore.ListenerRegistration
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-data class LeaveHistoryItem(
+data class FacultyHistoryItem(
     val id: String = "",
+    val studentName: String = "",
+    val studentId: String = "",
+    val department: String = "",
     val leaveType: String = "",
     val reason: String = "",
     val duration: Long = 0,
     val startDate: Timestamp? = null,
     val endDate: Timestamp? = null,
-    val status: String = "pending",
     val facultyStatus: String = "",
     val facultyRemarks: String = "",
     val adminStatus: String = "",
-    val adminRemarks: String = "",
-    val createdAt: Timestamp? = null
+    val status: String = "",
+    val facultyReviewedAt: Timestamp? = null
 )
 
 @Composable
-fun LeaveHistoryScreen(
+fun FacultyHistoryScreen(
     onBack: () -> Unit
 ) {
 
+    val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
     val db = FirebaseFirestore.getInstance()
 
     val uid = auth.currentUser?.uid
 
-    BackHandler {
-        onBack()
+    var department by remember {
+        mutableStateOf("")
     }
 
-    var requests by remember {
-        mutableStateOf<List<LeaveHistoryItem>>(emptyList())
+    var historyItems by remember {
+        mutableStateOf<List<FacultyHistoryItem>>(emptyList())
     }
 
     var selectedFilter by remember {
         mutableStateOf("All")
     }
 
-    var selectedRequest by remember {
-        mutableStateOf<LeaveHistoryItem?>(null)
+    var selectedItem by remember {
+        mutableStateOf<FacultyHistoryItem?>(null)
     }
 
-    var showDetails by remember {
+    var showDetailsDialog by remember {
         mutableStateOf(false)
     }
 
@@ -70,32 +74,81 @@ fun LeaveHistoryScreen(
         mutableStateOf(true)
     }
 
-    val teal = Color(0xFF0F7A83)
-    val background = Color(0xFFF5F7F8)
+    val teal = Color(0xFF0F7780)
+    val background = Color(0xFFF5F7FA)
 
-    DisposableEffect(uid) {
-
-        var listener: ListenerRegistration? = null
+    /*
+     * Load faculty department
+     */
+    LaunchedEffect(uid) {
 
         if (uid != null) {
 
+            db.collection("users")
+                .document(uid)
+                .get()
+                .addOnSuccessListener { document ->
+
+                    department =
+                        document.getString("department")
+                            ?: ""
+                }
+        }
+    }
+
+    /*
+     * Listen to reviewed leave requests
+     */
+    DisposableEffect(department) {
+
+        var listener: ListenerRegistration? = null
+
+        if (department.isNotBlank()) {
+
             listener =
                 db.collection("leave_requests")
-                    .whereEqualTo("studentUid", uid)
+                    .whereEqualTo(
+                        "department",
+                        department
+                    )
                     .addSnapshotListener { snapshot, error ->
 
                         if (error != null) {
+
                             isLoading = false
+
+                            Toast.makeText(
+                                context,
+                                "Unable to load history: ${error.message}",
+                                Toast.LENGTH_LONG
+                            ).show()
+
                             return@addSnapshotListener
                         }
 
-                        requests =
+                        historyItems =
                             snapshot?.documents
                                 ?.map { document ->
 
-                                    LeaveHistoryItem(
+                                    FacultyHistoryItem(
 
-                                        id = document.id,
+                                        id =
+                                            document.id,
+
+                                        studentName =
+                                            document.getString(
+                                                "studentName"
+                                            ) ?: "",
+
+                                        studentId =
+                                            document.getString(
+                                                "studentId"
+                                            ) ?: "",
+
+                                        department =
+                                            document.getString(
+                                                "department"
+                                            ) ?: "",
 
                                         leaveType =
                                             document.getString(
@@ -122,11 +175,6 @@ fun LeaveHistoryScreen(
                                                 "endDate"
                                             ),
 
-                                        status =
-                                            document.getString(
-                                                "status"
-                                            ) ?: "pending",
-
                                         facultyStatus =
                                             document.getString(
                                                 "facultyStatus"
@@ -142,19 +190,26 @@ fun LeaveHistoryScreen(
                                                 "adminStatus"
                                             ) ?: "",
 
-                                        adminRemarks =
+                                        status =
                                             document.getString(
-                                                "adminRemarks"
+                                                "status"
                                             ) ?: "",
 
-                                        createdAt =
+                                        facultyReviewedAt =
                                             document.getTimestamp(
-                                                "createdAt"
+                                                "facultyReviewedAt"
                                             )
                                     )
                                 }
+                                ?.filter {
+                                    !it.facultyStatus.equals(
+                                        "pending",
+                                        ignoreCase = true
+                                    ) &&
+                                            it.facultyStatus.isNotBlank()
+                                }
                                 ?.sortedByDescending {
-                                    it.createdAt?.seconds ?: 0
+                                    it.facultyReviewedAt?.seconds ?: 0
                                 }
                                 ?: emptyList()
 
@@ -167,46 +222,39 @@ fun LeaveHistoryScreen(
         }
     }
 
-    val filteredRequests =
+    val filteredItems =
         when (selectedFilter) {
 
-            "Pending" ->
-                requests.filter {
-                    it.status.equals(
-                        "pending",
-                        ignoreCase = true
-                    )
-                }
-
             "Approved" ->
-                requests.filter {
-                    it.status.equals(
+                historyItems.filter {
+                    it.facultyStatus.equals(
                         "approved",
                         ignoreCase = true
                     )
                 }
 
             "Rejected" ->
-                requests.filter {
-                    it.status.equals(
+                historyItems.filter {
+                    it.facultyStatus.equals(
                         "rejected",
                         ignoreCase = true
                     )
                 }
 
-            else -> requests
+            else ->
+                historyItems
         }
 
     if (
-        showDetails &&
-        selectedRequest != null
+        showDetailsDialog &&
+        selectedItem != null
     ) {
 
-        LeaveDetailsDialog(
-            request = selectedRequest!!,
+        FacultyHistoryDetailsDialog(
+            item = selectedItem!!,
             onDismiss = {
-                showDetails = false
-                selectedRequest = null
+                showDetailsDialog = false
+                selectedItem = null
             }
         )
     }
@@ -226,6 +274,7 @@ fun LeaveHistoryScreen(
                             horizontal = 16.dp,
                             vertical = 18.dp
                         ),
+
                     verticalAlignment =
                         Alignment.CenterVertically
                 ) {
@@ -240,15 +289,14 @@ fun LeaveHistoryScreen(
                     }
 
                     Spacer(
-                        Modifier.width(10.dp)
+                        Modifier.width(8.dp)
                     )
 
                     Text(
-                        text = "Leave History",
+                        text = "Review History",
                         color = Color.White,
-                        fontSize = 23.sp,
-                        fontWeight =
-                            FontWeight.Bold
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -274,7 +322,6 @@ fun LeaveHistoryScreen(
 
                 listOf(
                     "All",
-                    "Pending",
                     "Approved",
                     "Rejected"
                 ).forEach { item ->
@@ -301,8 +348,10 @@ fun LeaveHistoryScreen(
             if (isLoading) {
 
                 Box(
-                    modifier =
-                        Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(40.dp),
+
                     contentAlignment =
                         Alignment.Center
                 ) {
@@ -311,12 +360,16 @@ fun LeaveHistoryScreen(
                 }
 
             } else if (
-                filteredRequests.isEmpty()
+                filteredItems.isEmpty()
             ) {
 
                 Card(
                     modifier =
                         Modifier.fillMaxWidth(),
+
+                    shape =
+                        RoundedCornerShape(16.dp),
+
                     colors =
                         CardDefaults.cardColors(
                             containerColor =
@@ -326,29 +379,30 @@ fun LeaveHistoryScreen(
 
                     Text(
                         text =
-                            "No leave applications found.",
+                            "No reviewed leave requests found.",
+
                         modifier =
                             Modifier.padding(24.dp),
-                        color = Color.Gray
+
+                        color =
+                            Color.Gray
                     )
                 }
 
             } else {
 
-                filteredRequests.forEach {
-                        request ->
+                filteredItems.forEach { item ->
 
-                    LeaveHistoryCard(
-                        request = request,
+                    FacultyHistoryCard(
+                        item = item,
                         onViewDetails = {
-                            selectedRequest =
-                                request
-                            showDetails = true
+                            selectedItem = item
+                            showDetailsDialog = true
                         }
                     )
 
                     Spacer(
-                        Modifier.height(12.dp)
+                        Modifier.height(14.dp)
                     )
                 }
             }
@@ -357,8 +411,8 @@ fun LeaveHistoryScreen(
 }
 
 @Composable
-fun LeaveHistoryCard(
-    request: LeaveHistoryItem,
+fun FacultyHistoryCard(
+    item: FacultyHistoryItem,
     onViewDetails: () -> Unit
 ) {
 
@@ -370,20 +424,23 @@ fun LeaveHistoryCard(
             )
         }
 
+    val approved =
+        item.facultyStatus.equals(
+            "approved",
+            ignoreCase = true
+        )
+
     val statusColor =
-        when (
-            request.status.lowercase()
-        ) {
+        if (approved)
+            Color(0xFF2E9E72)
+        else
+            Color(0xFFD74444)
 
-            "approved" ->
-                Color(0xFF2E7D32)
-
-            "rejected" ->
-                Color(0xFFC62828)
-
-            else ->
-                Color(0xFFF57C00)
-        }
+    val statusBackground =
+        if (approved)
+            Color(0xFFE4F5EC)
+        else
+            Color(0xFFFDEBEC)
 
     Card(
         modifier =
@@ -409,64 +466,136 @@ fun LeaveHistoryCard(
                     Modifier.fillMaxWidth(),
 
                 horizontalArrangement =
-                    Arrangement.SpaceBetween
+                    Arrangement.SpaceBetween,
+
+                verticalAlignment =
+                    Alignment.Top
             ) {
 
-                Text(
-                    request.leaveType,
-                    fontSize = 18.sp,
-                    fontWeight =
-                        FontWeight.Bold
-                )
+                Column(
+                    modifier =
+                        Modifier.weight(1f)
+                ) {
 
-                Text(
-                    request.status
-                        .replaceFirstChar {
-                            it.uppercase()
-                        },
-                    color = statusColor,
-                    fontWeight =
-                        FontWeight.Bold
-                )
+                    Text(
+                        text =
+                            item.studentName,
+
+                        fontSize =
+                            18.sp,
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+
+                    Spacer(
+                        Modifier.height(4.dp)
+                    )
+
+                    Text(
+                        text =
+                            "${item.studentId} • ${item.department}",
+
+                        color =
+                            Color.Gray,
+
+                        fontSize =
+                            13.sp
+                    )
+                }
+
+                Surface(
+                    shape =
+                        RoundedCornerShape(20.dp),
+
+                    color =
+                        statusBackground
+                ) {
+
+                    Text(
+                        text =
+                            item.facultyStatus
+                                .replaceFirstChar {
+                                    it.uppercase()
+                                },
+
+                        color =
+                            statusColor,
+
+                        fontWeight =
+                            FontWeight.Bold,
+
+                        fontSize =
+                            12.sp,
+
+                        modifier =
+                            Modifier.padding(
+                                horizontal = 12.dp,
+                                vertical = 6.dp
+                            )
+                    )
+                }
             }
-
-            Spacer(
-                Modifier.height(8.dp)
-            )
-
-            val start =
-                request.startDate
-                    ?.toDate()
-                    ?.let {
-                        formatter.format(it)
-                    } ?: "-"
-
-            val end =
-                request.endDate
-                    ?.toDate()
-                    ?.let {
-                        formatter.format(it)
-                    } ?: "-"
-
-            Text(
-                "$start - $end"
-            )
-
-            Spacer(
-                Modifier.height(4.dp)
-            )
-
-            Text(
-                "${request.duration} day(s)",
-                color = Color.Gray
-            )
 
             Spacer(
                 Modifier.height(14.dp)
             )
 
+            Text(
+                text = item.leaveType,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                Modifier.height(7.dp)
+            )
+
+            val start =
+                item.startDate
+                    ?.toDate()
+                    ?.let {
+                        formatter.format(it)
+                    }
+                    ?: "-"
+
+            val end =
+                item.endDate
+                    ?.toDate()
+                    ?.let {
+                        formatter.format(it)
+                    }
+                    ?: "-"
+
+            Text(
+                text =
+                    "$start - $end • ${item.duration} day(s)"
+            )
+
+            if (
+                item.facultyRemarks.isNotBlank()
+            ) {
+
+                Spacer(
+                    Modifier.height(10.dp)
+                )
+
+                Text(
+                    text =
+                        "Remarks: ${item.facultyRemarks}",
+
+                    color =
+                        Color.DarkGray
+                )
+            }
+
+            Spacer(
+                Modifier.height(16.dp)
+            )
+
             OutlinedButton(
-                onClick = onViewDetails,
+                onClick =
+                    onViewDetails,
+
                 modifier =
                     Modifier.fillMaxWidth()
             ) {
@@ -478,8 +607,8 @@ fun LeaveHistoryCard(
 }
 
 @Composable
-fun LeaveDetailsDialog(
-    request: LeaveHistoryItem,
+fun FacultyHistoryDetailsDialog(
+    item: FacultyHistoryItem,
     onDismiss: () -> Unit
 ) {
 
@@ -492,18 +621,20 @@ fun LeaveDetailsDialog(
         }
 
     val start =
-        request.startDate
+        item.startDate
             ?.toDate()
             ?.let {
                 formatter.format(it)
-            } ?: "-"
+            }
+            ?: "-"
 
     val end =
-        request.endDate
+        item.endDate
             ?.toDate()
             ?.let {
                 formatter.format(it)
-            } ?: "-"
+            }
+            ?: "-"
 
     AlertDialog(
 
@@ -511,7 +642,7 @@ fun LeaveDetailsDialog(
             onDismiss,
 
         title = {
-            Text("Leave Request Details")
+            Text("Reviewed Leave Request")
         },
 
         text = {
@@ -524,14 +655,23 @@ fun LeaveDetailsDialog(
             ) {
 
                 Text(
-                    request.leaveType,
-                    fontWeight =
-                        FontWeight.Bold,
-                    fontSize = 18.sp
+                    item.studentName,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    "${item.studentId} • ${item.department}",
+                    color = Color.Gray
                 )
 
                 Spacer(
-                    Modifier.height(10.dp)
+                    Modifier.height(16.dp)
+                )
+
+                Text(
+                    item.leaveType,
+                    fontWeight = FontWeight.Bold
                 )
 
                 Text(
@@ -539,47 +679,44 @@ fun LeaveDetailsDialog(
                 )
 
                 Text(
-                    "Duration: ${request.duration} day(s)"
+                    "Duration: ${item.duration} day(s)"
                 )
 
                 Spacer(
-                    Modifier.height(14.dp)
+                    Modifier.height(16.dp)
                 )
 
                 Text(
                     "Reason",
-                    fontWeight =
-                        FontWeight.Bold
+                    fontWeight = FontWeight.Bold
                 )
 
-                Text(
-                    request.reason
-                )
+                Text(item.reason)
 
                 Spacer(
                     Modifier.height(18.dp)
                 )
 
                 Text(
-                    "Faculty / SSO Review",
-                    fontWeight =
-                        FontWeight.Bold
+                    "Faculty / SSO Decision",
+                    fontWeight = FontWeight.Bold
                 )
 
                 Text(
                     "Status: ${
-                        request.facultyStatus
-                            .ifBlank { "Not reviewed" }
+                        item.facultyStatus
+                            .replaceFirstChar {
+                                it.uppercase()
+                            }
                     }"
                 )
 
                 if (
-                    request.facultyRemarks
-                        .isNotBlank()
+                    item.facultyRemarks.isNotBlank()
                 ) {
 
                     Text(
-                        "Remarks: ${request.facultyRemarks}"
+                        "Remarks: ${item.facultyRemarks}"
                     )
                 }
 
@@ -588,41 +725,34 @@ fun LeaveDetailsDialog(
                 )
 
                 Text(
-                    "HOD / Admin Review",
-                    fontWeight =
-                        FontWeight.Bold
+                    "HOD / Admin Progress",
+                    fontWeight = FontWeight.Bold
                 )
 
                 Text(
                     "Status: ${
-                        request.adminStatus
-                            .ifBlank { "Not reviewed" }
+                        item.adminStatus
+                            .ifBlank {
+                                "Not reviewed"
+                            }
                     }"
                 )
 
-                if (
-                    request.adminRemarks
-                        .isNotBlank()
-                ) {
-
-                    Text(
-                        "Remarks: ${request.adminRemarks}"
-                    )
-                }
-
                 Spacer(
-                    Modifier.height(18.dp)
+                    Modifier.height(12.dp)
                 )
 
                 Text(
                     "Final Status: ${
-                        request.status
+                        item.status
+                            .ifBlank {
+                                "Pending"
+                            }
                             .replaceFirstChar {
                                 it.uppercase()
                             }
                     }",
-                    fontWeight =
-                        FontWeight.Bold
+                    fontWeight = FontWeight.Bold
                 )
             }
         },
@@ -632,6 +762,7 @@ fun LeaveDetailsDialog(
             TextButton(
                 onClick = onDismiss
             ) {
+
                 Text("Close")
             }
         }
