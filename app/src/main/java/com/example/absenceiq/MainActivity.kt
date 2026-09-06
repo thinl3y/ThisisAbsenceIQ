@@ -1,5 +1,6 @@
 package com.example.absenceiq
 
+import androidx.activity.compose.BackHandler
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -9,6 +10,11 @@ import com.example.absenceiq.screens.*
 import com.example.absenceiq.ui.theme.AbsenceIQTheme
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import com.google.firebase.messaging.FirebaseMessaging
 
 class MainActivity : ComponentActivity() {
 
@@ -21,12 +27,100 @@ class MainActivity : ComponentActivity() {
         auth = FirebaseAuth.getInstance()
         db = FirebaseFirestore.getInstance()
 
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.TIRAMISU
+        ) {
+
+            if (
+                ActivityCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ),
+                    1001
+                )
+            }
+        }
+
         setContent {
 
             AbsenceIQTheme {
 
                 var currentScreen by remember {
                     mutableStateOf("login")
+                }
+                BackHandler(
+                    enabled = currentScreen != "login"
+                ) {
+
+                    when (currentScreen) {
+
+                        "register" -> {
+                            currentScreen = "login"
+                        }
+
+                        "studentDashboard" -> {
+                            auth.signOut()
+                            currentScreen = "login"
+                        }
+
+                        "applyLeave" -> {
+                            currentScreen = "studentDashboard"
+                        }
+
+                        "leaveHistory" -> {
+                            currentScreen = "studentDashboard"
+                        }
+
+                        "com/example/absenceiq/notifications" -> {
+                            currentScreen = "studentDashboard"
+                        }
+
+                        "studentProfile" -> {
+                            currentScreen = "studentDashboard"
+                        }
+
+                        "facultyDashboard" -> {
+                            auth.signOut()
+                            currentScreen = "login"
+                        }
+
+                        "facultyRequests" -> {
+                            currentScreen = "facultyDashboard"
+                        }
+
+                        "facultyHistory" -> {
+                            currentScreen = "facultyDashboard"
+                        }
+
+                        "facultyProfile" -> {
+                            currentScreen = "facultyDashboard"
+                        }
+
+                        "adminDashboard" -> {
+                            auth.signOut()
+                            currentScreen = "login"
+                        }
+
+                        "adminRequests" -> {
+                            currentScreen = "adminDashboard"
+                        }
+
+                        "adminHistory" -> {
+                            currentScreen = "adminDashboard"
+                        }
+
+                        "adminProfile" -> {
+                            currentScreen = "adminDashboard"
+                        }
+                    }
                 }
 
                 when (currentScreen) {
@@ -66,7 +160,6 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-
                     "register" -> {
 
                         RegisterScreen(
@@ -76,16 +169,14 @@ class MainActivity : ComponentActivity() {
                                     email,
                                     password,
                                     studentId,
-                                    department,
-                                    role ->
+                                    department ->
 
                                 registerUser(
                                     name = name,
                                     email = email,
                                     password = password,
                                     studentId = studentId,
-                                    department = department,
-                                    role = role
+                                    department = department
                                 )
                             },
 
@@ -108,7 +199,7 @@ class MainActivity : ComponentActivity() {
                             },
 
                             onNotificationsClick = {
-                                currentScreen = "notifications"
+                                currentScreen = "com/example/absenceiq/notifications"
                             },
 
                             onProfileClick = {
@@ -136,7 +227,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    "notifications" -> {
+                    "com/example/absenceiq/notifications" -> {
 
                         NotificationsScreen(
 
@@ -410,7 +501,7 @@ class MainActivity : ComponentActivity() {
         password: String,
         studentId: String,
         department: String,
-        role: String
+        /*role: String */
     ) {
 
         if (
@@ -457,7 +548,8 @@ class MainActivity : ComponentActivity() {
                         "email" to email,
                         "studentId" to studentId,
                         "department" to department,
-                        "role" to role.lowercase()
+                        "role" to "student",
+                        "leaveBalance" to 10L
                     )
 
                 db.collection("users")

@@ -511,7 +511,7 @@ fun FacultyDashboardScreen(
                                     )
 
                                 db.collection(
-                                    "notifications"
+                                    "com/example/absenceiq/notifications"
                                 )
                                     .add(notification)
 

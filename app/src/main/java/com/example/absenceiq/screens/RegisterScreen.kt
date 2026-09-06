@@ -17,11 +17,11 @@ fun RegisterScreen(
         String,
         String,
         String,
-        String,
         String
     ) -> Unit,
     onBackToLogin: () -> Unit
 ) {
+
 
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -30,7 +30,7 @@ fun RegisterScreen(
     var password by remember { mutableStateOf("") }
 
     var expanded by remember { mutableStateOf(false) }
-    var role by remember { mutableStateOf("Student") }
+    /*var role by remember { mutableStateOf("Student") }*/
 
     Column(
         modifier = Modifier
@@ -98,7 +98,7 @@ fun RegisterScreen(
                 onClick = { expanded = true },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Role: $role")
+                /*Text("Role: $role")*/
             }
 
             DropdownMenu(
@@ -109,24 +109,18 @@ fun RegisterScreen(
                 DropdownMenuItem(
                     text = { Text("Student") },
                     onClick = {
-                        role = "Student"
-                        expanded = false
                     }
                 )
 
                 DropdownMenuItem(
                     text = { Text("Faculty / SSO") },
                     onClick = {
-                        role = "Faculty"
-                        expanded = false
                     }
                 )
 
                 DropdownMenuItem(
                     text = { Text("HOD / Admin") },
                     onClick = {
-                        role = "Admin"
-                        expanded = false
                     }
                 )
             }
@@ -156,7 +150,7 @@ fun RegisterScreen(
                     password,
                     studentId.trim(),
                     department.trim(),
-                    role
+                    /*role */
                 )
             },
             modifier = Modifier.fillMaxWidth()

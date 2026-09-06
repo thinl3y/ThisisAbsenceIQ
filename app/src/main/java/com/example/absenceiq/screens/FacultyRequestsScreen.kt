@@ -489,7 +489,7 @@ fun FacultyRequestsScreen(
                                                 to FieldValue.serverTimestamp()
                                     )
 
-                                db.collection("notifications")
+                                db.collection("com/example/absenceiq/notifications")
                                     .add(notification)
 
                                 Toast.makeText(

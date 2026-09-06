@@ -21,7 +21,8 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Calendar
+import java.util.Locale
 
 data class AdminLeaveRequest(
     val id: String = "",
@@ -39,7 +40,10 @@ data class AdminLeaveRequest(
     val adminStatus: String = "pending",
     val status: String = "pending",
     val createdAt: Timestamp? = null,
-    val adminReviewedAt: Timestamp? = null
+    val adminReviewedAt: Timestamp? = null,
+
+    // Prevents leave balance from being deducted twice.
+    val balanceDeducted: Boolean = false
 )
 
 @Composable
@@ -48,7 +52,7 @@ fun AdminDashboardScreen(
     onHistoryClick: () -> Unit,
     onProfileClick: () -> Unit,
     onLogout: () -> Unit
-){
+) {
 
     val context = LocalContext.current
     val auth = FirebaseAuth.getInstance()
@@ -76,10 +80,6 @@ fun AdminDashboardScreen(
         mutableStateOf(false)
     }
 
-    var action by remember {
-        mutableStateOf("")
-    }
-
     var remarks by remember {
         mutableStateOf("")
     }
@@ -92,7 +92,7 @@ fun AdminDashboardScreen(
     val pageBackground = Color(0xFFF5F7FA)
 
     /*
-     * Load HOD/Admin profile
+     * Load logged-in HOD/Admin profile.
      */
     LaunchedEffect(uid) {
 
@@ -111,13 +111,12 @@ fun AdminDashboardScreen(
     }
 
     /*
-     * Listen to requests already approved by Faculty / SSO
+     * Only requests already approved by Faculty / SSO
+     * should reach HOD/Admin.
      */
     DisposableEffect(Unit) {
 
-        var listener: ListenerRegistration? = null
-
-        listener =
+        val listener: ListenerRegistration =
             db.collection("leave_requests")
                 .whereEqualTo(
                     "facultyStatus",
@@ -144,7 +143,8 @@ fun AdminDashboardScreen(
 
                                 AdminLeaveRequest(
 
-                                    id = document.id,
+                                    id =
+                                        document.id,
 
                                     studentUid =
                                         document.getString(
@@ -219,7 +219,12 @@ fun AdminDashboardScreen(
                                     adminReviewedAt =
                                         document.getTimestamp(
                                             "adminReviewedAt"
-                                        )
+                                        ),
+
+                                    balanceDeducted =
+                                        document.getBoolean(
+                                            "balanceDeducted"
+                                        ) ?: false
                                 )
                             }
                             ?.sortedByDescending {
@@ -231,10 +236,13 @@ fun AdminDashboardScreen(
                 }
 
         onDispose {
-            listener?.remove()
+            listener.remove()
         }
     }
 
+    /*
+     * Dashboard statistics.
+     */
     val pendingCount =
         requests.count {
             it.adminStatus.equals(
@@ -260,7 +268,9 @@ fun AdminDashboardScreen(
                     ignoreCase = true
                 )
             ) {
+
                 false
+
             } else {
 
                 val reviewedDate =
@@ -295,6 +305,9 @@ fun AdminDashboardScreen(
             }
         }
 
+    /*
+     * Filter requests.
+     */
     val filteredRequests =
         when (selectedFilter) {
 
@@ -327,14 +340,15 @@ fun AdminDashboardScreen(
         }
 
     /*
-     * Request Details / Approval Dialog
+     * REQUEST DETAILS DIALOG
      */
     if (
         showRequestDialog &&
         selectedRequest != null
     ) {
 
-        val request = selectedRequest!!
+        val request =
+            selectedRequest!!
 
         val formatter =
             remember {
@@ -349,14 +363,16 @@ fun AdminDashboardScreen(
                 ?.toDate()
                 ?.let {
                     formatter.format(it)
-                } ?: "-"
+                }
+                ?: "-"
 
         val endDateText =
             request.endDate
                 ?.toDate()
                 ?.let {
                     formatter.format(it)
-                } ?: "-"
+                }
+                ?: "-"
 
         AlertDialog(
 
@@ -369,45 +385,25 @@ fun AdminDashboardScreen(
 
             title = {
 
-                Row(
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    verticalAlignment =
-                        Alignment.CenterVertically
-                ) {
-
-                    Text(
-                        text = "‹",
-                        fontSize = 26.sp
-                    )
-
-                    Spacer(
-                        Modifier.width(8.dp)
-                    )
-
-                    Text(
-                        text = "Leave Request",
-                        fontSize = 22.sp,
-                        fontWeight =
-                            FontWeight.Bold
-                    )
-                }
+                Text(
+                    text = "Leave Request",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
             },
 
             text = {
 
                 Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .verticalScroll(
-                                rememberScrollState()
-                            )
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(
+                            rememberScrollState()
+                        )
                 ) {
 
                     /*
-                     * STUDENT INFORMATION
+                     * Student information.
                      */
                     Row(
                         verticalAlignment =
@@ -419,14 +415,10 @@ fun AdminDashboardScreen(
                                 Modifier.size(52.dp),
 
                             shape =
-                                RoundedCornerShape(
-                                    26.dp
-                                ),
+                                RoundedCornerShape(26.dp),
 
                             color =
-                                Color(
-                                    0xFFE1F0F2
-                                )
+                                Color(0xFFE1F0F2)
                         ) {
 
                             Box(
@@ -438,6 +430,9 @@ fun AdminDashboardScreen(
                                     text =
                                         request.studentName
                                             .split(" ")
+                                            .filter {
+                                                it.isNotBlank()
+                                            }
                                             .take(2)
                                             .mapNotNull {
                                                 it.firstOrNull()
@@ -445,8 +440,7 @@ fun AdminDashboardScreen(
                                             .joinToString("")
                                             .uppercase(),
 
-                                    color =
-                                        teal,
+                                    color = teal,
 
                                     fontWeight =
                                         FontWeight.Bold
@@ -493,36 +487,56 @@ fun AdminDashboardScreen(
                         Modifier.height(16.dp)
                     )
 
+                    /*
+                     * Status.
+                     */
                     Surface(
                         shape =
-                            RoundedCornerShape(
-                                18.dp
-                            ),
+                            RoundedCornerShape(18.dp),
 
                         color =
-                            Color(
-                                0xFFFFF1DB
-                            )
+                            when (
+                                request.adminStatus.lowercase()
+                            ) {
+
+                                "approved" ->
+                                    Color(0xFFE4F5EC)
+
+                                "rejected" ->
+                                    Color(0xFFFDEBEC)
+
+                                else ->
+                                    Color(0xFFFFF1DB)
+                            }
                     ) {
 
                         Text(
                             text =
                                 if (
-                                    request.adminStatus
-                                        .equals(
-                                            "pending",
-                                            true
-                                        )
-                                )
+                                    request.adminStatus.equals(
+                                        "pending",
+                                        true
+                                    )
+                                ) {
                                     "PENDING REVIEW"
-                                else
-                                    request.adminStatus
-                                        .uppercase(),
+                                } else {
+                                    request.adminStatus.uppercase()
+                                },
 
                             color =
-                                Color(
-                                    0xFFE49317
-                                ),
+                                when (
+                                    request.adminStatus.lowercase()
+                                ) {
+
+                                    "approved" ->
+                                        Color(0xFF2E9E72)
+
+                                    "rejected" ->
+                                        Color(0xFFD74444)
+
+                                    else ->
+                                        Color(0xFFE49317)
+                                },
 
                             fontWeight =
                                 FontWeight.Bold,
@@ -532,10 +546,8 @@ fun AdminDashboardScreen(
 
                             modifier =
                                 Modifier.padding(
-                                    horizontal =
-                                        12.dp,
-                                    vertical =
-                                        6.dp
+                                    horizontal = 12.dp,
+                                    vertical = 6.dp
                                 )
                         )
                     }
@@ -545,7 +557,7 @@ fun AdminDashboardScreen(
                     )
 
                     /*
-                     * LEAVE DETAILS
+                     * Leave details.
                      */
                     Text(
                         text =
@@ -594,27 +606,12 @@ fun AdminDashboardScreen(
                             "${request.duration} Days"
                     )
 
-                    /*
-                     * LEAVE BALANCE
-                     *
-                     * We don't currently store balance
-                     * inside the request document.
-                     */
-                    AdminDetailRow(
-                        label =
-                            "Leave Balance",
-
-                        value =
-                            "Not assigned"
-                    )
-
                     Spacer(
                         Modifier.height(16.dp)
                     )
 
                     Text(
-                        text =
-                            "Reason:",
+                        text = "Reason:",
 
                         fontWeight =
                             FontWeight.Bold
@@ -632,95 +629,9 @@ fun AdminDashboardScreen(
                             Color.DarkGray
                     )
 
-                    Spacer(
-                        Modifier.height(22.dp)
-                    )
-
                     /*
-                     * REVIEW PROGRESS
+                     * Faculty review.
                      */
-                    Text(
-                        text =
-                            "Review Progress",
-
-                        fontSize =
-                            18.sp,
-
-                        fontWeight =
-                            FontWeight.Bold
-                    )
-
-                    Spacer(
-                        Modifier.height(12.dp)
-                    )
-
-                    Text(
-                        text =
-                            "✓  Submitted",
-
-                        color =
-                            Color(
-                                0xFF2E9E72
-                            ),
-
-                        fontWeight =
-                            FontWeight.Medium
-                    )
-
-                    Spacer(
-                        Modifier.height(6.dp)
-                    )
-
-                    Text(
-                        text =
-                            "✓  Faculty reviewed",
-
-                        color =
-                            Color(
-                                0xFF2E9E72
-                            ),
-
-                        fontWeight =
-                            FontWeight.Medium
-                    )
-
-                    Spacer(
-                        Modifier.height(6.dp)
-                    )
-
-                    Text(
-                        text =
-                            if (
-                                request.adminStatus
-                                    .equals(
-                                        "pending",
-                                        true
-                                    )
-                            )
-                                "●  Awaiting HOD"
-                            else
-                                "✓  HOD reviewed",
-
-                        color =
-                            if (
-                                request.adminStatus
-                                    .equals(
-                                        "pending",
-                                        true
-                                    )
-                            )
-                                Color(
-                                    0xFFE49317
-                                )
-                            else
-                                Color(
-                                    0xFF2E9E72
-                                ),
-
-                        fontWeight =
-                            FontWeight.Medium
-                    )
-
                     if (
                         request.facultyRemarks
                             .isNotBlank()
@@ -756,19 +667,17 @@ fun AdminDashboardScreen(
                     )
 
                     /*
-                     * ADMIN REMARKS
+                     * HOD/Admin remarks input.
                      */
                     if (
-                        request.adminStatus
-                            .equals(
-                                "pending",
-                                true
-                            )
+                        request.adminStatus.equals(
+                            "pending",
+                            true
+                        )
                     ) {
 
                         Text(
-                            text =
-                                "Remarks",
+                            text = "Remarks",
 
                             fontWeight =
                                 FontWeight.Bold
@@ -779,8 +688,7 @@ fun AdminDashboardScreen(
                         )
 
                         OutlinedTextField(
-                            value =
-                                remarks,
+                            value = remarks,
 
                             onValueChange = {
                                 remarks = it
@@ -798,75 +706,31 @@ fun AdminDashboardScreen(
                                 Modifier.fillMaxWidth()
                         )
                     }
-
-                    Spacer(
-                        Modifier.height(18.dp)
-                    )
-
-                    /*
-                     * SUPPORTING DOCUMENT
-                     */
-                    Card(
-                        modifier =
-                            Modifier.fillMaxWidth(),
-
-                        colors =
-                            CardDefaults.cardColors(
-                                containerColor =
-                                    Color(
-                                        0xFFF5F7FA
-                                    )
-                            )
-                    ) {
-
-                        Text(
-                            text =
-                                "📎 Supporting document",
-
-                            modifier =
-                                Modifier.padding(
-                                    14.dp
-                                ),
-
-                            color =
-                                Color.DarkGray
-                        )
-                    }
                 }
             },
 
+            /*
+             * APPROVE BUTTON
+             */
             confirmButton = {
 
                 if (
-                    request.adminStatus
-                        .equals(
-                            "pending",
-                            true
-                        )
+                    request.adminStatus.equals(
+                        "pending",
+                        true
+                    )
                 ) {
 
                     Button(
-
                         onClick = {
 
                             updateAdminDecision(
-                                db =
-                                    db,
-
-                                request =
-                                    request,
-
-                                uid =
-                                    uid,
-
-                                remarks =
-                                    remarks,
-
-                                action =
-                                    "approve",
-
-                                context =
-                                    context
+                                db = db,
+                                request = request,
+                                uid = uid,
+                                remarks = remarks,
+                                action = "approve",
+                                context = context
                             ) {
 
                                 showRequestDialog =
@@ -880,11 +744,9 @@ fun AdminDashboardScreen(
                         },
 
                         colors =
-                            ButtonDefaults
-                                .buttonColors(
-                                    containerColor =
-                                        teal
-                                )
+                            ButtonDefaults.buttonColors(
+                                containerColor = teal
+                            )
                     ) {
 
                         Text("Approve")
@@ -894,8 +756,12 @@ fun AdminDashboardScreen(
 
                     TextButton(
                         onClick = {
+
                             showRequestDialog =
                                 false
+
+                            selectedRequest =
+                                null
                         }
                     ) {
 
@@ -904,18 +770,19 @@ fun AdminDashboardScreen(
                 }
             },
 
+            /*
+             * REJECT BUTTON
+             */
             dismissButton = {
 
                 if (
-                    request.adminStatus
-                        .equals(
-                            "pending",
-                            true
-                        )
+                    request.adminStatus.equals(
+                        "pending",
+                        true
+                    )
                 ) {
 
                     OutlinedButton(
-
                         onClick = {
 
                             if (
@@ -932,23 +799,12 @@ fun AdminDashboardScreen(
                             }
 
                             updateAdminDecision(
-                                db =
-                                    db,
-
-                                request =
-                                    request,
-
-                                uid =
-                                    uid,
-
-                                remarks =
-                                    remarks,
-
-                                action =
-                                    "reject",
-
-                                context =
-                                    context
+                                db = db,
+                                request = request,
+                                uid = uid,
+                                remarks = remarks,
+                                action = "reject",
+                                context = context
                             ) {
 
                                 showRequestDialog =
@@ -963,19 +819,16 @@ fun AdminDashboardScreen(
                     ) {
 
                         Text(
-                            text =
-                                "Reject",
-
+                            text = "Reject",
                             color =
-                                Color(
-                                    0xFFC62828
-                                )
+                                Color(0xFFC62828)
                         )
                     }
                 }
             }
         )
     }
+
     Scaffold(
 
         bottomBar = {
@@ -984,10 +837,13 @@ fun AdminDashboardScreen(
 
                 NavigationBarItem(
                     selected = true,
+
                     onClick = { },
+
                     icon = {
                         Text("⌂")
                     },
+
                     label = {
                         Text("Dashboard")
                     }
@@ -995,10 +851,14 @@ fun AdminDashboardScreen(
 
                 NavigationBarItem(
                     selected = false,
-                    onClick = onRequestsClick,
+
+                    onClick =
+                        onRequestsClick,
+
                     icon = {
                         Text("≡")
                     },
+
                     label = {
                         Text("Requests")
                     }
@@ -1006,10 +866,14 @@ fun AdminDashboardScreen(
 
                 NavigationBarItem(
                     selected = false,
-                    onClick = onHistoryClick,
+
+                    onClick =
+                        onHistoryClick,
+
                     icon = {
                         Text("●")
                     },
+
                     label = {
                         Text("History")
                     }
@@ -1017,10 +881,14 @@ fun AdminDashboardScreen(
 
                 NavigationBarItem(
                     selected = false,
-                    onClick = onProfileClick,
+
+                    onClick =
+                        onProfileClick,
+
                     icon = {
                         Text("○")
                     },
+
                     label = {
                         Text("Profile")
                     }
@@ -1072,9 +940,7 @@ fun AdminDashboardScreen(
                 )
 
                 Spacer(
-                    Modifier.height(
-                        5.dp
-                    )
+                    Modifier.height(5.dp)
                 )
 
                 Text(
@@ -1093,9 +959,7 @@ fun AdminDashboardScreen(
 
             Column(
                 modifier =
-                    Modifier.padding(
-                        18.dp
-                    )
+                    Modifier.padding(18.dp)
             ) {
 
                 /*
@@ -1119,14 +983,10 @@ fun AdminDashboardScreen(
                             "Pending",
 
                         countColor =
-                            Color(
-                                0xFFF39C12
-                            ),
+                            Color(0xFFF39C12),
 
                         modifier =
-                            Modifier.weight(
-                                1f
-                            )
+                            Modifier.weight(1f)
                     )
 
                     AdminSummaryCard(
@@ -1137,14 +997,10 @@ fun AdminDashboardScreen(
                             "Approved Today",
 
                         countColor =
-                            Color(
-                                0xFF2E9E72
-                            ),
+                            Color(0xFF2E9E72),
 
                         modifier =
-                            Modifier.weight(
-                                1f
-                            )
+                            Modifier.weight(1f)
                     )
 
                     AdminSummaryCard(
@@ -1155,26 +1011,17 @@ fun AdminDashboardScreen(
                             "Rejected",
 
                         countColor =
-                            Color(
-                                0xFFD74444
-                            ),
+                            Color(0xFFD74444),
 
                         modifier =
-                            Modifier.weight(
-                                1f
-                            )
+                            Modifier.weight(1f)
                     )
                 }
 
                 Spacer(
-                    Modifier.height(
-                        26.dp
-                    )
+                    Modifier.height(26.dp)
                 )
 
-                /*
-                 * TITLE
-                 */
                 Text(
                     text =
                         "Pending Leave Requests",
@@ -1187,9 +1034,7 @@ fun AdminDashboardScreen(
                 )
 
                 Spacer(
-                    Modifier.height(
-                        12.dp
-                    )
+                    Modifier.height(12.dp)
                 )
 
                 /*
@@ -1227,9 +1072,7 @@ fun AdminDashboardScreen(
                 }
 
                 Spacer(
-                    Modifier.height(
-                        18.dp
-                    )
+                    Modifier.height(18.dp)
                 )
 
                 if (isLoading) {
@@ -1238,9 +1081,7 @@ fun AdminDashboardScreen(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .padding(
-                                    40.dp
-                                ),
+                                .padding(40.dp),
 
                         contentAlignment =
                             Alignment.Center
@@ -1250,8 +1091,7 @@ fun AdminDashboardScreen(
                     }
 
                 } else if (
-                    filteredRequests
-                        .isEmpty()
+                    filteredRequests.isEmpty()
                 ) {
 
                     Card(
@@ -1293,7 +1133,8 @@ fun AdminDashboardScreen(
                                 request =
                                     request,
 
-                                teal = teal,
+                                teal =
+                                    teal,
 
                                 onViewRequest = {
 
@@ -1315,23 +1156,17 @@ fun AdminDashboardScreen(
                         }
                 }
 
-                /*
-                 * LEAVE OVERVIEW
-                 */
                 Spacer(
-                    Modifier.height(
-                        12.dp
-                    )
+                    Modifier.height(12.dp)
                 )
 
                 LeaveOverviewCard(
-                    requests = requests
+                    requests =
+                        requests
                 )
 
                 Spacer(
-                    Modifier.height(
-                        22.dp
-                    )
+                    Modifier.height(22.dp)
                 )
 
                 OutlinedButton(
@@ -1346,14 +1181,13 @@ fun AdminDashboardScreen(
                 }
 
                 Spacer(
-                    Modifier.height(
-                        20.dp
-                    )
+                    Modifier.height(20.dp)
                 )
             }
         }
     }
 }
+
 
 @Composable
 fun AdminSummaryCard(
@@ -1364,12 +1198,11 @@ fun AdminSummaryCard(
 ) {
 
     Card(
-        modifier = modifier,
+        modifier =
+            modifier,
 
         shape =
-            RoundedCornerShape(
-                16.dp
-            ),
+            RoundedCornerShape(16.dp),
 
         colors =
             CardDefaults.cardColors(
@@ -1379,11 +1212,12 @@ fun AdminSummaryCard(
     ) {
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    vertical = 18.dp
-                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        vertical = 18.dp
+                    ),
 
             horizontalAlignment =
                 Alignment.CenterHorizontally
@@ -1404,9 +1238,7 @@ fun AdminSummaryCard(
             )
 
             Spacer(
-                Modifier.height(
-                    4.dp
-                )
+                Modifier.height(4.dp)
             )
 
             Text(
@@ -1422,6 +1254,7 @@ fun AdminSummaryCard(
         }
     }
 }
+
 
 @Composable
 fun AdminCompactRequestCard(
@@ -1440,8 +1273,7 @@ fun AdminCompactRequestCard(
 
     val statusColor =
         when (
-            request.adminStatus
-                .lowercase()
+            request.adminStatus.lowercase()
         ) {
 
             "approved" ->
@@ -1456,8 +1288,7 @@ fun AdminCompactRequestCard(
 
     val statusBackground =
         when (
-            request.adminStatus
-                .lowercase()
+            request.adminStatus.lowercase()
         ) {
 
             "approved" ->
@@ -1475,9 +1306,7 @@ fun AdminCompactRequestCard(
             Modifier.fillMaxWidth(),
 
         shape =
-            RoundedCornerShape(
-                16.dp
-            ),
+            RoundedCornerShape(16.dp),
 
         colors =
             CardDefaults.cardColors(
@@ -1488,9 +1317,7 @@ fun AdminCompactRequestCard(
 
         Column(
             modifier =
-                Modifier.padding(
-                    18.dp
-                )
+                Modifier.padding(18.dp)
         ) {
 
             Row(
@@ -1521,9 +1348,7 @@ fun AdminCompactRequestCard(
                     )
 
                     Spacer(
-                        Modifier.height(
-                            5.dp
-                        )
+                        Modifier.height(5.dp)
                     )
 
                     Text(
@@ -1566,19 +1391,15 @@ fun AdminCompactRequestCard(
 
                         modifier =
                             Modifier.padding(
-                                horizontal =
-                                    12.dp,
-                                vertical =
-                                    6.dp
+                                horizontal = 12.dp,
+                                vertical = 6.dp
                             )
                     )
                 }
             }
 
             Spacer(
-                Modifier.height(
-                    14.dp
-                )
+                Modifier.height(14.dp)
             )
 
             Text(
@@ -1590,9 +1411,7 @@ fun AdminCompactRequestCard(
             )
 
             Spacer(
-                Modifier.height(
-                    7.dp
-                )
+                Modifier.height(7.dp)
             )
 
             val start =
@@ -1620,17 +1439,14 @@ fun AdminCompactRequestCard(
             )
 
             if (
-                request.adminStatus
-                    .equals(
-                        "pending",
-                        ignoreCase = true
-                    )
+                request.adminStatus.equals(
+                    "pending",
+                    ignoreCase = true
+                )
             ) {
 
                 Spacer(
-                    Modifier.height(
-                        16.dp
-                    )
+                    Modifier.height(16.dp)
                 )
 
                 Row(
@@ -1668,6 +1484,7 @@ fun AdminCompactRequestCard(
     }
 }
 
+
 @Composable
 fun LeaveOverviewCard(
     requests: List<AdminLeaveRequest>
@@ -1687,18 +1504,22 @@ fun LeaveOverviewCard(
     val todayStart =
         Calendar.getInstance()
             .apply {
+
                 set(
                     Calendar.HOUR_OF_DAY,
                     0
                 )
+
                 set(
                     Calendar.MINUTE,
                     0
                 )
+
                 set(
                     Calendar.SECOND,
                     0
                 )
+
                 set(
                     Calendar.MILLISECOND,
                     0
@@ -1709,14 +1530,17 @@ fun LeaveOverviewCard(
     val todayEnd =
         Calendar.getInstance()
             .apply {
+
                 set(
                     Calendar.HOUR_OF_DAY,
                     23
                 )
+
                 set(
                     Calendar.MINUTE,
                     59
                 )
+
                 set(
                     Calendar.SECOND,
                     59
@@ -1728,12 +1552,10 @@ fun LeaveOverviewCard(
         approvedRequests.count {
 
             val start =
-                it.startDate
-                    ?.toDate()
+                it.startDate?.toDate()
 
             val end =
-                it.endDate
-                    ?.toDate()
+                it.endDate?.toDate()
 
             start != null &&
                     end != null &&
@@ -1772,10 +1594,12 @@ fun LeaveOverviewCard(
 
     val decided =
         requests.count {
+
             it.adminStatus.equals(
                 "approved",
                 true
             ) ||
+
                     it.adminStatus.equals(
                         "rejected",
                         true
@@ -1806,9 +1630,7 @@ fun LeaveOverviewCard(
             Modifier.fillMaxWidth(),
 
         shape =
-            RoundedCornerShape(
-                16.dp
-            ),
+            RoundedCornerShape(16.dp),
 
         colors =
             CardDefaults.cardColors(
@@ -1819,9 +1641,7 @@ fun LeaveOverviewCard(
 
         Column(
             modifier =
-                Modifier.padding(
-                    20.dp
-                )
+                Modifier.padding(20.dp)
         ) {
 
             Text(
@@ -1836,9 +1656,7 @@ fun LeaveOverviewCard(
             )
 
             Spacer(
-                Modifier.height(
-                    16.dp
-                )
+                Modifier.height(16.dp)
             )
 
             OverviewRow(
@@ -1850,9 +1668,7 @@ fun LeaveOverviewCard(
             )
 
             Spacer(
-                Modifier.height(
-                    9.dp
-                )
+                Modifier.height(9.dp)
             )
 
             OverviewRow(
@@ -1864,9 +1680,7 @@ fun LeaveOverviewCard(
             )
 
             Spacer(
-                Modifier.height(
-                    9.dp
-                )
+                Modifier.height(9.dp)
             )
 
             OverviewRow(
@@ -1879,6 +1693,7 @@ fun LeaveOverviewCard(
         }
     }
 }
+
 
 @Composable
 fun OverviewRow(
@@ -1911,6 +1726,8 @@ fun OverviewRow(
         )
     }
 }
+
+
 @Composable
 fun AdminDetailRow(
     label: String,
@@ -1922,8 +1739,7 @@ fun AdminDetailRow(
             Modifier
                 .fillMaxWidth()
                 .padding(
-                    vertical =
-                        5.dp
+                    vertical = 5.dp
                 ),
 
         horizontalArrangement =
@@ -1948,6 +1764,24 @@ fun AdminDetailRow(
     }
 }
 
+
+/*
+ * Final HOD/Admin decision.
+ *
+ * APPROVE:
+ * - verifies request is still pending
+ * - reads student's leaveBalance
+ * - checks balance
+ * - deducts duration
+ * - approves request
+ * - sets balanceDeducted = true
+ *
+ * All of that happens in ONE transaction.
+ *
+ * REJECT:
+ * - updates request only
+ * - does not deduct leave balance
+ */
 private fun updateAdminDecision(
     db: FirebaseFirestore,
     request: AdminLeaveRequest,
@@ -1958,127 +1792,366 @@ private fun updateAdminDecision(
     onComplete: () -> Unit
 ) {
 
-    val newStatus =
-        if (action == "approve")
+    /*
+     * APPROVE
+     */
+    if (action == "approve") {
+
+        if (
+            request.studentUid.isBlank()
+        ) {
+
+            Toast.makeText(
+                context,
+                "Student account could not be identified",
+                Toast.LENGTH_LONG
+            ).show()
+
+            return
+        }
+
+        val requestRef =
+            db.collection(
+                "leave_requests"
+            )
+                .document(
+                    request.id
+                )
+
+        val studentRef =
+            db.collection(
+                "users"
+            )
+                .document(
+                    request.studentUid
+                )
+
+        db.runTransaction { transaction ->
+
+            /*
+             * Read both documents before writing.
+             */
+            val requestSnapshot =
+                transaction.get(
+                    requestRef
+                )
+
+            val studentSnapshot =
+                transaction.get(
+                    studentRef
+                )
+
+            /*
+             * Make sure Faculty actually approved.
+             */
+            val facultyStatus =
+                requestSnapshot.getString(
+                    "facultyStatus"
+                ) ?: ""
+
+            if (
+                !facultyStatus.equals(
+                    "approved",
+                    ignoreCase = true
+                )
+            ) {
+
+                throw Exception(
+                    "Faculty approval is required"
+                )
+            }
+
+            /*
+             * Prevent duplicate final approval.
+             */
+            val currentAdminStatus =
+                requestSnapshot.getString(
+                    "adminStatus"
+                ) ?: "pending"
+
+            if (
+                !currentAdminStatus.equals(
+                    "pending",
+                    ignoreCase = true
+                )
+            ) {
+
+                throw Exception(
+                    "This request has already been reviewed"
+                )
+            }
+
+            /*
+             * Prevent double balance deduction.
+             */
+            val alreadyDeducted =
+                requestSnapshot.getBoolean(
+                    "balanceDeducted"
+                ) ?: false
+
+            if (alreadyDeducted) {
+
+                throw Exception(
+                    "Leave balance has already been deducted"
+                )
+            }
+
+            val currentBalance =
+                studentSnapshot.getLong(
+                    "leaveBalance"
+                )
+                    ?: throw Exception(
+                        "Student leave balance is not assigned"
+                    )
+
+            val duration =
+                requestSnapshot.getLong(
+                    "duration"
+                ) ?: request.duration
+
+            if (duration <= 0) {
+
+                throw Exception(
+                    "Invalid leave duration"
+                )
+            }
+
+            if (
+                currentBalance <
+                duration
+            ) {
+
+                throw Exception(
+                    "Insufficient leave balance. Available: $currentBalance day(s)"
+                )
+            }
+
+            val newBalance =
+                currentBalance -
+                        duration
+
+            /*
+             * Update student balance.
+             */
+            transaction.update(
+                studentRef,
+                "leaveBalance",
+                newBalance
+            )
+
+            /*
+             * Final approval.
+             */
+            transaction.update(
+                requestRef,
+                mapOf(
+                    "adminStatus"
+                            to "approved",
+
+                    "status"
+                            to "approved",
+
+                    "adminRemarks"
+                            to remarks.trim(),
+
+                    "adminReviewedBy"
+                            to (uid ?: ""),
+
+                    "adminReviewedAt"
+                            to FieldValue.serverTimestamp(),
+
+                    "updatedAt"
+                            to FieldValue.serverTimestamp(),
+
+                    "balanceDeducted"
+                            to true
+                )
+            )
+
+            newBalance
+        }
+            .addOnSuccessListener { newBalance ->
+
+                createAdminNotification(
+                    db = db,
+                    request = request,
+                    action = "approve",
+                    context = context
+                ) {
+
+                    Toast.makeText(
+                        context,
+                        "Leave approved. Remaining balance: $newBalance day(s)",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    onComplete()
+                }
+            }
+
+            .addOnFailureListener { error ->
+
+                Toast.makeText(
+                    context,
+                    "Approval failed: ${error.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+
+    } else {
+
+        /*
+         * REJECT
+         *
+         * No leave balance deduction.
+         */
+        val updates =
+            hashMapOf<String, Any>(
+
+                "adminStatus"
+                        to "rejected",
+
+                "status"
+                        to "rejected",
+
+                "adminRemarks"
+                        to remarks.trim(),
+
+                "adminReviewedBy"
+                        to (uid ?: ""),
+
+                "adminReviewedAt"
+                        to FieldValue.serverTimestamp(),
+
+                "updatedAt"
+                        to FieldValue.serverTimestamp()
+            )
+
+        db.collection(
+            "leave_requests"
+        )
+            .document(
+                request.id
+            )
+            .update(
+                updates
+            )
+            .addOnSuccessListener {
+
+                createAdminNotification(
+                    db = db,
+                    request = request,
+                    action = "reject",
+                    context = context,
+                    onComplete = onComplete
+                )
+            }
+            .addOnFailureListener { error ->
+
+                Toast.makeText(
+                    context,
+                    "Rejection failed: ${error.message}",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+    }
+}
+
+
+/*
+ * Create notification only AFTER
+ * approval/rejection succeeds.
+ */
+private fun createAdminNotification(
+    db: FirebaseFirestore,
+    request: AdminLeaveRequest,
+    action: String,
+    context: android.content.Context,
+    onComplete: () -> Unit
+) {
+
+    val notificationTitle =
+        if (
+            action == "approve"
+        ) {
+
+            "Leave Approved"
+
+        } else {
+
+            "Leave Rejected"
+        }
+
+    val notificationMessage =
+        if (
+            action == "approve"
+        ) {
+
+            "Your ${request.leaveType} request has been approved."
+
+        } else {
+
+            "Your ${request.leaveType} request has been rejected. Tap to view remarks."
+        }
+
+    val notificationType =
+        if (
+            action == "approve"
+        ) {
+
             "approved"
-        else
+
+        } else {
+
             "rejected"
+        }
 
-    val updates =
-        hashMapOf<String, Any>(
+    val notification =
+        hashMapOf(
+            "userUid"
+                    to request.studentUid,
 
-            "adminStatus"
-                    to newStatus,
+            "title"
+                    to notificationTitle,
 
-            "status"
-                    to newStatus,
+            "message"
+                    to notificationMessage,
 
-            "adminRemarks"
-                    to remarks.trim(),
+            "type"
+                    to notificationType,
 
-            "adminReviewedBy"
-                    to (uid ?: ""),
+            "leaveRequestId"
+                    to request.id,
 
-            "adminReviewedAt"
-                    to FieldValue.serverTimestamp(),
+            "isRead"
+                    to false,
 
-            "updatedAt"
+            "createdAt"
                     to FieldValue.serverTimestamp()
         )
 
     db.collection(
-        "leave_requests"
+        "com/example/absenceiq/notifications"
     )
-        .document(
-            request.id
+        .add(
+            notification
         )
-        .update(updates)
-
         .addOnSuccessListener {
 
+            onComplete()
+        }
+        .addOnFailureListener { error ->
+
             /*
-             * Create notification for student
+             * Approval/rejection already succeeded,
+             * so don't undo it just because notification failed.
              */
-            val notificationTitle =
-                if (
-                    action ==
-                    "approve"
-                )
-                    "Leave Approved"
-                else
-                    "Leave Rejected"
-
-            val notificationMessage =
-                if (
-                    action ==
-                    "approve"
-                )
-                    "Your ${request.leaveType} request has been approved."
-                else
-                    "Your ${request.leaveType} request has been rejected. Tap to view remarks."
-
-            val notificationType =
-                if (
-                    action ==
-                    "approve"
-                )
-                    "approved"
-                else
-                    "rejected"
-
-            val notification =
-                hashMapOf(
-
-                    "userUid"
-                            to request.studentUid,
-
-                    "title"
-                            to notificationTitle,
-
-                    "message"
-                            to notificationMessage,
-
-                    "type"
-                            to notificationType,
-
-                    "leaveRequestId"
-                            to request.id,
-
-                    "isRead"
-                            to false,
-
-                    "createdAt"
-                            to FieldValue.serverTimestamp()
-                )
-
-            db.collection(
-                "notifications"
-            )
-                .add(notification)
-
             Toast.makeText(
                 context,
-
-                if (
-                    action ==
-                    "approve"
-                )
-                    "Leave request approved"
-                else
-                    "Leave request rejected",
-
+                "Decision saved, but notification failed: ${error.message}",
                 Toast.LENGTH_LONG
             ).show()
 
             onComplete()
-        }
-
-        .addOnFailureListener { error ->
-
-            Toast.makeText(
-                context,
-                "Update failed: ${error.message}",
-                Toast.LENGTH_LONG
-            ).show()
         }
 }

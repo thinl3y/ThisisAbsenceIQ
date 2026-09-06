@@ -95,7 +95,7 @@ fun NotificationsScreen(
         if (uid != null) {
 
             listener =
-                db.collection("notifications")
+                db.collection("com/example/absenceiq/notifications")
                     .whereEqualTo(
                         "userUid",
                         uid
@@ -412,7 +412,7 @@ fun NotificationsScreen(
                             ) {
 
                                 db.collection(
-                                    "notifications"
+                                    "com/example/absenceiq/notifications"
                                 )
                                     .document(
                                         notification.id
